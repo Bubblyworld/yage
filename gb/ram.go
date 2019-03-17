@@ -2,7 +2,10 @@ package gb
 
 import "errors"
 
-type ram interface{}
+type ram interface {
+	poke(uint32, uint8) error
+	read(uint32, uint32) ([]uint8, error)
+}
 
 const (
 	gbByteMask   = 0xFF    // 0b11111111
@@ -10,27 +13,30 @@ const (
 )
 
 var (
-	gbErrUnaligned   = errors.New("gbRAM: address isn't aligned to 8-bit boundary")
 	gbErrOutOfBounds = errors.New("gbRAM: address isn't within 64Kb memory bounds")
 )
 
 type gbRAM struct {
-	mem [gbMaxAddress >> 8]uint8
+	mem [gbMaxAddress]uint8
 }
 
 func newGBRAM() *gbRAM {
 	return &gbRAM{}
 }
 
-func (r *gbRAM) poke(val uint8, addr uint32) error {
-	if addr&gbByteMask != 0 {
-		return gbErrUnaligned
-	}
-
+func (r *gbRAM) poke(addr uint32, val uint8) error {
 	if addr >= gbMaxAddress {
 		return gbErrOutOfBounds
 	}
 
-	r.mem[addr>>8] = val
+	r.mem[addr] = val
 	return nil
+}
+
+func (r *gbRAM) read(addr, n uint32) ([]uint8, error) {
+	if addr+n >= gbMaxAddress {
+		return nil, gbErrOutOfBounds
+	}
+
+	return r.mem[addr : addr+n], nil
 }
