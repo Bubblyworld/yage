@@ -1,12 +1,14 @@
 package gb
 
-import "errors"
+import (
+	"errors"
+)
 
 type cpu interface {
 	// load reads and decodes the memory poined to by the PC register into an
 	// opcode. It must not perform any mutating operations, such as
 	// incrementing the PC counter.
-	load() (*gbOpcode, error)
+	load(ram) (*gbOpcode, error)
 
 	// execute performs the given opcode, updating memory, registers and
 	// peripherals as needed.
@@ -24,27 +26,29 @@ type cpu interface {
 type gbRegisterType int
 
 const (
+	gbRegisterUnknown gbRegisterType = 0
+
 	// 8-bit registers
-	gbRegisterA gbRegisterType = 0 // accumulator register
-	gbRegisterF gbRegisterType = 1 // flag register
-	gbRegisterB gbRegisterType = 2
-	gbRegisterC gbRegisterType = 3
-	gbRegisterD gbRegisterType = 4
-	gbRegisterE gbRegisterType = 5
-	gbRegisterH gbRegisterType = 6
-	gbRegisterL gbRegisterType = 7
+	gbRegisterA gbRegisterType = 1 // accumulator register
+	gbRegisterF gbRegisterType = 2 // flag register
+	gbRegisterB gbRegisterType = 3
+	gbRegisterC gbRegisterType = 4
+	gbRegisterD gbRegisterType = 5
+	gbRegisterE gbRegisterType = 6
+	gbRegisterH gbRegisterType = 7
+	gbRegisterL gbRegisterType = 8
 
 	// 16-bit stack pointer register
-	gbRegisterSP gbRegisterType = 8
+	gbRegisterSP gbRegisterType = 9
 
 	// 16-bit program counter register
-	gbRegisterPC gbRegisterType = 9
+	gbRegisterPC gbRegisterType = 10
 
 	// 16-bit combined registers
-	gbRegisterAF gbRegisterType = 10
-	gbRegisterBC gbRegisterType = 11
-	gbRegisterDE gbRegisterType = 12
-	gbRegisterHL gbRegisterType = 13
+	gbRegisterAF gbRegisterType = 11
+	gbRegisterBC gbRegisterType = 12
+	gbRegisterDE gbRegisterType = 13
+	gbRegisterHL gbRegisterType = 14
 )
 
 var (
@@ -85,15 +89,11 @@ func decodeRegisterType(t uint8) gbRegisterType {
 	case 5: // 0b101
 		return gbRegisterL
 
-	case 6: // 0b110
-		return gbRegisterHL
-
 	case 7: // 0b111
 		return gbRegisterA
 	}
 
-	panic(gbErrUnknownRegisterEncoding) // should never happen
-	return 0
+	return gbRegisterUnknown
 }
 
 const (
@@ -109,8 +109,9 @@ type gbCPU struct {
 }
 
 var (
-	gbErrUnknownRegisterType = errors.New("gbCPU: unknown register type")
-	gbErrUnknownOpcode       = errors.New("gbCPU: unknown opcode")
+	gbErrUnknownRegisterType    = errors.New("gbCPU: unknown register type")
+	gbErrUnknownOpcode          = errors.New("gbCPU: unknown opcode")
+	gbErrIncompatibleOpcodeSize = errors.New("gbCPU: incompatible opcode sizes returned by decode")
 )
 
 func newGBCPU() *gbCPU {
@@ -119,25 +120,29 @@ func newGBCPU() *gbCPU {
 
 func (c *gbCPU) readRegister(t gbRegisterType) uint16 {
 	if t.is8Bit() {
-		return uint16(c.reg8[t])
+		return uint16(c.reg8[t-1])
 	}
 
-	if !t.isCombined() {
-		return c.reg16[t-gbRegisterSP]
+	if t.is16Bit() && !t.isCombined() {
+		return c.reg16[t-gbRegisterSP-1]
 	}
 
 	switch t {
 	case gbRegisterAF:
-		return (uint16(c.reg8[gbRegisterA]) << 8) + uint16(c.reg8[gbRegisterF])
+		return uint16(c.readRegister(gbRegisterA)<<8) +
+			uint16(c.readRegister(gbRegisterF))
 
 	case gbRegisterBC:
-		return (uint16(c.reg8[gbRegisterB]) << 8) + uint16(c.reg8[gbRegisterC])
+		return uint16(c.readRegister(gbRegisterB)<<8) +
+			uint16(c.readRegister(gbRegisterC))
 
 	case gbRegisterDE:
-		return (uint16(c.reg8[gbRegisterD]) << 8) + uint16(c.reg8[gbRegisterE])
+		return uint16(c.readRegister(gbRegisterD)<<8) +
+			uint16(c.readRegister(gbRegisterE))
 
 	case gbRegisterHL:
-		return (uint16(c.reg8[gbRegisterH]) << 8) + uint16(c.reg8[gbRegisterL])
+		return uint16(c.readRegister(gbRegisterH)<<8) +
+			uint16(c.readRegister(gbRegisterL))
 	}
 
 	panic(gbErrUnknownRegisterType) // should never get here
@@ -146,43 +151,70 @@ func (c *gbCPU) readRegister(t gbRegisterType) uint16 {
 
 func (c *gbCPU) pokeRegister(val uint16, t gbRegisterType) {
 	if t.is8Bit() {
-		c.reg8[t] = uint8(val & 0xFF)
+		c.reg8[t-1] = uint8(val & 0xFF)
 		return
 	}
 
-	if !t.isCombined() {
-		c.reg16[t-gbRegisterSP] = val
+	if t.is16Bit() && !t.isCombined() {
+		c.reg16[t-gbRegisterSP-1] = val
 		return
 	}
 
 	switch t {
 	case gbRegisterAF:
-		c.reg8[gbRegisterA] = uint8(val >> 8)
-		c.reg8[gbRegisterF] = uint8(val & 0xFF)
+		c.reg8[gbRegisterA-1] = uint8(val >> 8)
+		c.reg8[gbRegisterF-1] = uint8(val & 0xFF)
 		return
 
 	case gbRegisterBC:
-		c.reg8[gbRegisterB] = uint8(val >> 8)
-		c.reg8[gbRegisterC] = uint8(val & 0xFF)
+		c.reg8[gbRegisterB-1] = uint8(val >> 8)
+		c.reg8[gbRegisterC-1] = uint8(val & 0xFF)
 		return
 
 	case gbRegisterDE:
-		c.reg8[gbRegisterD] = uint8(val >> 8)
-		c.reg8[gbRegisterE] = uint8(val & 0xFF)
+		c.reg8[gbRegisterD-1] = uint8(val >> 8)
+		c.reg8[gbRegisterE-1] = uint8(val & 0xFF)
 		return
 
 	case gbRegisterHL:
-		c.reg8[gbRegisterH] = uint8(val >> 8)
-		c.reg8[gbRegisterL] = uint8(val & 0xFF)
+		c.reg8[gbRegisterH-1] = uint8(val >> 8)
+		c.reg8[gbRegisterL-1] = uint8(val & 0xFF)
 		return
 	}
 
 	panic(gbErrUnknownRegisterType) // should never get here
 }
 
-func (c *gbCPU) load() (*gbOpcode, error) {
-	// TODO(guy): implement
-	return nil, nil
+func (c *gbCPU) load(r ram) (*gbOpcode, error) {
+	addr := uint32(c.readRegister(gbRegisterPC))
+	ops, err := r.read(addr, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	opcode, n, err := decode(ops)
+	if err != nil && err != gbErrWrongOpcodeSize {
+		return nil, err
+	}
+	if err == nil {
+		return opcode, nil
+	}
+	if n < 0 {
+		panic(gbErrIncompatibleOpcodeSize) // should never get here
+	}
+
+	// Opcode requires more data.
+	opsn, err := r.read(addr+1, uint32(n))
+	if err != nil {
+		return nil, err
+	}
+
+	opcode, n, err = decode(append(ops, opsn...))
+	if n != 0 {
+		panic(gbErrIncompatibleOpcodeSize)
+	}
+
+	return opcode, err
 }
 
 func (c *gbCPU) execute(r ram, op *gbOpcode) error {
@@ -206,6 +238,18 @@ func (c *gbCPU) execute(r ram, op *gbOpcode) error {
 	default:
 		return gbErrUnknownOpcode
 	}
+
+	// TODO(guy): Update PC register where necessary.
+}
+
+// runInstructionCycle performs a full fetch, decode and execute cycle.
+func runInstructionCycle(c cpu, r ram) error {
+	opcode, err := c.load(r)
+	if err != nil {
+		return err
+	}
+
+	return c.execute(r, opcode)
 }
 
 func pokeRegisterIntoRAM(c cpu, r ram, t gbRegisterType,

@@ -33,10 +33,24 @@ func (r *gbRAM) poke(addr uint32, val uint8) error {
 	return nil
 }
 
+// TODO(guy): read should read a single byte, and there should be a utility
+// function for reading multiple bytes (for consistency)
 func (r *gbRAM) read(addr, n uint32) ([]uint8, error) {
 	if addr+n >= gbMaxAddress {
 		return nil, gbErrOutOfBounds
 	}
 
 	return r.mem[addr : addr+n], nil
+}
+
+// write is a utility function for writing multiple bytes to the given memory
+// location.
+func write(r ram, addr uint32, vals []uint8) error {
+	for i, val := range vals {
+		if err := r.poke(addr+uint32(i), val); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
