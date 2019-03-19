@@ -15,7 +15,7 @@ func prepareForOpcodes(t *testing.T, opcodes []uint8) (*gbCPU, *gbRAM) {
 	r := newGBRAM()
 
 	// Write opcodes to a memory location and point (PC) to it.
-	assert.NoError(t, write(r, 0x100, opcodes))
+	assert.NoError(t, pokeN(r, 0x100, opcodes))
 	c.pokeRegister(0x100, gbRegisterPC)
 
 	return c, r
@@ -97,11 +97,11 @@ func Test8BitLD_HL_R(t *testing.T) {
 
 			// Run a full instruction cycle on the CPU.
 			assert.NoError(t, runInstructionCycle(c, r))
-			mem, err := r.read(addr, 1)
+			mem, err := r.read(addr)
 			if !assert.NoError(t, err) {
 				return
 			}
-			assert.Equal(t, expectedMem, mem[0])
+			assert.Equal(t, expectedMem, mem)
 		}
 	}
 

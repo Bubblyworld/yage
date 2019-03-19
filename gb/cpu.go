@@ -187,11 +187,12 @@ func (c *gbCPU) pokeRegister(val uint16, t gbRegisterType) {
 
 func (c *gbCPU) load(r ram) (*gbOpcode, error) {
 	addr := uint32(c.readRegister(gbRegisterPC))
-	ops, err := r.read(addr, 1)
+	op, err := r.read(addr)
 	if err != nil {
 		return nil, err
 	}
 
+	ops := []uint8{op}
 	opcode, n, err := decode(ops)
 	if err != nil && err != gbErrWrongOpcodeSize {
 		return nil, err
@@ -204,7 +205,7 @@ func (c *gbCPU) load(r ram) (*gbOpcode, error) {
 	}
 
 	// Opcode requires more data.
-	opsn, err := r.read(addr+1, uint32(n))
+	opsn, err := readN(r, addr+1, uint32(n))
 	if err != nil {
 		return nil, err
 	}
@@ -274,9 +275,9 @@ func pokeRegisterIntoRAM(c cpu, r ram, t gbRegisterType,
 func pokeRAMIntoRegister(c cpu, r ram, t gbRegisterType,
 	addr uint32, only8Bit bool) error {
 
-	vals, err := r.read(addr, 1)
+	vals, err := readN(r, addr, 1)
 	if !only8Bit {
-		vals, err = r.read(addr, 2)
+		vals, err = readN(r, addr, 2)
 	}
 	if err != nil {
 		return err

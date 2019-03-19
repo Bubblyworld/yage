@@ -4,7 +4,7 @@ import "errors"
 
 type ram interface {
 	poke(uint32, uint8) error
-	read(uint32, uint32) ([]uint8, error)
+	read(uint32) (uint8, error)
 }
 
 const (
@@ -33,19 +33,30 @@ func (r *gbRAM) poke(addr uint32, val uint8) error {
 	return nil
 }
 
-// TODO(guy): read should read a single byte, and there should be a utility
-// function for reading multiple bytes (for consistency)
-func (r *gbRAM) read(addr, n uint32) ([]uint8, error) {
-	if addr+n >= gbMaxAddress {
-		return nil, gbErrOutOfBounds
+func (r *gbRAM) read(addr uint32) (uint8, error) {
+	if addr >= gbMaxAddress {
+		return 0, gbErrOutOfBounds
 	}
 
-	return r.mem[addr : addr+n], nil
+	return r.mem[addr], nil
 }
 
-// write is a utility function for writing multiple bytes to the given memory
-// location.
-func write(r ram, addr uint32, vals []uint8) error {
+// readN is a utility function for reading multiple bytes from a given address.
+func readN(r ram, addr, n uint32) ([]uint8, error) {
+	var res []uint8
+	for i := uint32(0); i < n; i++ {
+		b, err := r.read(addr + i)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, b)
+	}
+
+	return res, nil
+}
+
+// pokeN is a utility function for writing multiple bytes to the given address.
+func pokeN(r ram, addr uint32, vals []uint8) error {
 	for i, val := range vals {
 		if err := r.poke(addr+uint32(i), val); err != nil {
 			return err
