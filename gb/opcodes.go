@@ -54,7 +54,7 @@ type gbOpcode struct {
 	header uint8   // bits 7,6 of opcode
 	first  uint8   // bits 5,4,3 of opcode
 	second uint8   // bits 2,1,0 of opcode
-	data   []uint8 // remaining bits of opcode (if any)
+	data   []uint8 // remaining bytes of opcode (if any)
 
 	tipe   gbOpcodeType
 	cycles int // cycles measures in units of 4 quartz cycles
@@ -103,6 +103,29 @@ func decode(ops []uint8) (*gbOpcode, int, error) {
 		if fR != gbRegisterUnknown && sR != gbRegisterUnknown {
 			o.tipe = gbOpcodeLDRRp
 			o.cycles = 1
+			return &o, 0, nil
+		}
+
+	case gbOpcodeHeader00:
+		fR := decodeRegisterType(o.first)
+
+		if fR != gbRegisterUnknown && o.second == gbOpcodePart110 {
+			if len(o.data) != 1 {
+				return nil, 1 - len(o.data), gbErrWrongOpcodeSize
+			}
+
+			o.tipe = gbOpcodeLDRN
+			o.cycles = 2
+			return &o, 0, nil
+		}
+
+		if o.first == gbOpcodePart110 && o.second == gbOpcodePart110 {
+			if len(o.data) != 1 {
+				return nil, 1 - len(o.data), gbErrWrongOpcodeSize
+			}
+
+			o.tipe = gbOpcodeLDHlN
+			o.cycles = 3
 			return &o, 0, nil
 		}
 	}

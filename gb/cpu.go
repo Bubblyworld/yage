@@ -236,6 +236,15 @@ func (c *gbCPU) execute(r ram, op *gbOpcode) error {
 		addr := uint32(c.readRegister(gbRegisterHL))
 		return pokeRegisterIntoRAM(c, r, from, addr, true)
 
+	case gbOpcodeLDRN:
+		to := decodeRegisterType(op.first)
+		c.pokeRegister(uint16(op.data[0]), to)
+		return nil
+
+	case gbOpcodeLDHlN:
+		addr := uint32(c.readRegister(gbRegisterHL))
+		return r.poke(addr, op.data[0])
+
 	default:
 		return gbErrUnknownOpcode
 	}

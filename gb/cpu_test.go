@@ -23,7 +23,7 @@ func prepareForOpcodes(t *testing.T, opcodes []uint8) (*gbCPU, *gbRAM) {
 
 // Test8BitLD_RR tests the 8-bit [LD R,R'] opcodes.
 func Test8BitLD_R_R(t *testing.T) {
-	opcodeHeader := uint8(1)
+	opcodeHeader := gbOpcodeHeader01
 	opcodeRegs := []uint8{0, 1, 2, 3, 4, 5, 7}
 
 	// Random values for the test registers/memory.
@@ -60,8 +60,8 @@ func Test8BitLD_R_R(t *testing.T) {
 
 // Test8BitLD_HL_R tests the 8-bit [LD (HL),R] opcodes.
 func Test8BitLD_HL_R(t *testing.T) {
-	opcodeHeader := uint8(1)
-	opcodeHLReg := uint8(6)
+	opcodeHeader := gbOpcodeHeader01
+	opcodeHLReg := gbOpcodePart110
 	opcodeRegs := []uint8{0, 1, 2, 3, 4, 5, 7}
 
 	// Random values for the test registers/memory.
@@ -113,8 +113,8 @@ func Test8BitLD_HL_R(t *testing.T) {
 
 // Test8BitLD_R_HL tests the 8-bit [LD R,(HL)] opcodes.
 func Test8BitLD_R_HL(t *testing.T) {
-	opcodeHeader := uint8(1)
-	opcodeHLReg := uint8(6)
+	opcodeHeader := gbOpcodeHeader01
+	opcodeHLReg := gbOpcodePart110
 	opcodeRegs := []uint8{0, 1, 2, 3, 4, 5, 7}
 
 	// Random values for the test registers/memory.
@@ -147,4 +147,65 @@ func Test8BitLD_R_HL(t *testing.T) {
 		name := fmt.Sprintf("01 110 %03b", r)
 		t.Run(name, testFn(r))
 	}
+}
+
+// Test8BitLD_R_N tests the 8-bit [LD R,n] opcodes.
+func Test8BitLD_R_N(t *testing.T) {
+	opcodeHeader := gbOpcodeHeader00
+	opcodeSecond := gbOpcodePart110
+	opcodeRegs := []uint8{0, 1, 2, 3, 4, 5, 7}
+
+	// Random values for the test registers/memory.
+	const (
+		v uint16 = 0x24
+		n uint8  = 0xAB
+	)
+
+	testFn := func(r uint8) func(*testing.T) {
+		return func(t *testing.T) {
+			rt := decodeRegisterType(r)
+			opcode := (opcodeHeader << 6) + (r << 3) + opcodeSecond
+			c, r := prepareForOpcodes(t, []uint8{opcode, n})
+
+			// Write something to the dest register.
+			c.pokeRegister(v, rt)
+
+			// Run a full instruction cycle on the CPU.
+			assert.NoError(t, runInstructionCycle(c, r))
+			assert.Equal(t, uint16(n), c.readRegister(rt))
+		}
+	}
+
+	for _, r := range opcodeRegs {
+		name := fmt.Sprintf("00 %03b 110", r)
+		t.Run(name, testFn(r))
+	}
+}
+
+// Test8BitLD_Hl_N tests the 8-bit [LD (Hl),n] opcode.
+func Test8BitLD_Hl_N(t *testing.T) {
+	opcodeHeader := gbOpcodeHeader00
+	opcodePart := gbOpcodePart110
+
+	// Random values for the test registers/memory.
+	const (
+		v    uint8  = 0x42
+		n    uint8  = 0xAB
+		addr uint32 = 0x200
+	)
+
+	opcode := (opcodeHeader << 6) + (opcodePart << 3) + opcodePart
+	c, r := prepareForOpcodes(t, []uint8{opcode, n})
+
+	// Write something to memory and set (HL) to its address.
+	assert.NoError(t, r.poke(addr, v))
+	c.pokeRegister(uint16(addr), gbRegisterHL)
+
+	// Run a full instruction cycle on the CPU.
+	assert.NoError(t, runInstructionCycle(c, r))
+	mem, err := r.read(addr)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, n, mem)
 }
